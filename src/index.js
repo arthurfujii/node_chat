@@ -8,6 +8,9 @@ const EventEmitter = require('events');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT;
+let messages = [];
+const users = [];
+const rooms = [];
 
 const app = express();
 
@@ -16,37 +19,18 @@ app.use(express.json());
 
 const emitter = new EventEmitter();
 
-const messages = [];
-const users = [];
-
 app.post('/users', (req, res) => {
-  const { username } = req.body;
-  const user = {
-    username,
-  };
+  const { user } = req.body;
 
   users.push(user);
-  res.status(201).send(user);
 });
 
-app.post('/messages', (req, res) => {
-  const { text, author, room } = req.body;
-
-  const message = {
-    text,
-    author,
-    room,
-    time: new Date(),
-  };
-
-  messages.push(message);
-
-  emitter.emit('message', message);
-
-  res.status(201).send(messages);
+app.get('/rooms', (req, res) => {
+  res.status(200).send(rooms);
 });
 
 app.get('/messages', (req, res) => {
+  console.log(messages);
   res.status(200).send(messages);
 });
 
@@ -54,25 +38,18 @@ const server = app.listen(PORT);
 
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (connection) => {
-  // eslint-disable-next-line no-console
-  console.log(messages); // TODO: remove this line
+wss.on('connection', (client) => {
+  client.on('message', (data) => {
+    const message = JSON.parse(data);
 
-  connection.on('message', (text) => {
-    const message = {
-      text: text.toString(),
-      // author,
-      time: new Date(),
-    };
+    messages = [message, ...messages];
 
-    messages.push(message);
-
-    emitter.emit('message', message);
+    emitter.emit('message', JSON.stringify(message));
   });
 });
 
-emitter.on('message', (message) => {
+emitter.on('message', (data) => {
   for (const client of wss.clients) {
-    client.send(JSON.stringify(message));
+    client.send(data);
   }
 });
