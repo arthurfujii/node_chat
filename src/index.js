@@ -10,7 +10,6 @@ const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT;
 let messages = [];
 const users = [];
-const rooms = [];
 
 const app = express();
 
@@ -20,13 +19,34 @@ app.use(express.json());
 const emitter = new EventEmitter();
 
 app.post('/users', (req, res) => {
-  const { user } = req.body;
+  const { username, room } = req.body;
+  const user = {
+    id: users.length ? users.length + 1 : 1,
+    username,
+    room,
+  };
 
   users.push(user);
+  emitter.emit('user', JSON.stringify(user));
+  console.log(user);
+
+  res.status(201).send(user);
 });
 
-app.get('/rooms', (req, res) => {
-  res.status(200).send(rooms);
+app.get('/users', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Cache-Control', 'no-store');
+
+  const callback = () => {
+    res.write(`data: ${JSON.stringify(users)}\n\n`);
+  };
+
+  emitter.on('user', callback);
+
+  res.on('close', () => {
+    emitter.off('user', callback);
+  });
 });
 
 app.get('/messages', (req, res) => {
@@ -35,11 +55,13 @@ app.get('/messages', (req, res) => {
 });
 
 const server = app.listen(PORT);
-
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (client) => {
+wss.on('connection', (client, req) => {
   client.on('message', (data) => {
+    // client.id = req.headers['sec-websocket-key'].slice(0, -2);
+    // console.log(client.id);
+
     const message = JSON.parse(data);
 
     messages = [message, ...messages];
