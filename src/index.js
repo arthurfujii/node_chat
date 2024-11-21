@@ -104,7 +104,8 @@ app.post('/rooms', (req, res) => {
 
   rooms.push(room);
   emitter.emit('rooms', rooms);
-  console.log(rooms);
+  // eslint-disable-next-line no-console
+  console.log(rooms); // TODO: remove console.log
   res.status(201).send(room);
 });
 
@@ -156,7 +157,8 @@ app.patch('/rooms/:id', (req, res) => {
 
   room.users.push(updatedUser.data);
 
-  console.log(updatedUser.data);
+  // eslint-disable-next-line no-console
+  console.log(updatedUser.data); // TODO: remove console.log
   res.status(201).send(room);
 });
 
