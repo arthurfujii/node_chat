@@ -26,6 +26,10 @@ app.get('/rooms', (req, res) => {
   res.status(200).send(rooms);
 });
 
+app.get('/messages', (req, res) => {
+  res.status(200).send(messages);
+});
+
 const server = app.listen(PORT);
 const io = new Server(server, {
   cors: {
@@ -41,6 +45,10 @@ io.on('connection', (client) => {
   console.log(`User ${client.id} connected`); // TODO remove console.log
 
   client.on('disconnect', () => {
+    const user = users.find((usr) => usr.id === client.id);
+
+    client.leave(user.currentRoom?.name);
+
     // eslint-disable-next-line no-console
     console.log(`User ${client.id} disconnected`); // TODO remove console.log
   });
@@ -49,7 +57,6 @@ io.on('connection', (client) => {
     const user = {
       id: client.id,
       username: data,
-      currentRoom: null,
     };
 
     users.push(user);
@@ -62,8 +69,10 @@ io.on('connection', (client) => {
   });
 
   client.on('joinRoom', async (data) => {
-    updateUser(data.user.id, data.room);
+    const user = updateUser(data.user.id, data.room);
+
     client.join(data.room.name);
+    client.emit('user', user);
     io.emit('users', users);
   });
 
@@ -76,12 +85,23 @@ io.on('connection', (client) => {
     rooms = [...rooms, room];
     io.emit('rooms', rooms);
   });
+
+  client.on('message', (data) => {
+    const message = buildMsg(data.text, data.user);
+
+    messages.push(message);
+    messages.sort((a, b) => a.time - b.time);
+
+    io.to(message.user.currentRoom.name).emit('message', message);
+    console.log(messages);
+  });
 });
 
 function buildMsg(text, user) {
   return {
     text,
     user,
+
     time: new Intl.DateTimeFormat('pt-BR', {
       hour: 'numeric',
       minute: 'numeric',
@@ -95,6 +115,8 @@ function updateUser(id, room) {
     const user = users.find((usr) => usr.id === id);
 
     user.currentRoom = room;
+
+    return user;
   } catch (e) {
     console.error(e); // TODO: handle error
   }
