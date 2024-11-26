@@ -46,12 +46,6 @@ io.on('connection', (client) => {
   });
 
   client.on('user', (data) => {
-    // if (users.find((usr) => usr.username === data)) {
-    //   client.emit('userError', 'Username already exists');
-
-    //   return;
-    // }
-
     const user = {
       id: client.id,
       username: data,
@@ -84,10 +78,10 @@ io.on('connection', (client) => {
   });
 });
 
-function buildMsg(text, userId) {
+function buildMsg(text, user) {
   return {
     text,
-    userId,
+    user,
     time: new Intl.DateTimeFormat('pt-BR', {
       hour: 'numeric',
       minute: 'numeric',
@@ -102,7 +96,7 @@ function updateUser(id, room) {
 
     user.currentRoom = room;
   } catch (e) {
-    console.error(e);
+    console.error(e); // TODO: handle error
   }
 }
 
