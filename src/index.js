@@ -26,8 +26,19 @@ app.get('/rooms', (req, res) => {
   res.status(200).send(rooms);
 });
 
-app.get('/messages', (req, res) => {
-  res.status(200).send(messages);
+app.get('/messages/:id', (req, res) => {
+  const roomId = req.params.id;
+
+  try {
+    const filteredMessages = messages.filter(
+      (msg) => msg.user.currentRoom.id === +roomId,
+    );
+
+    res.status(200).send(filteredMessages);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+  }
 });
 
 const server = app.listen(PORT);
@@ -42,15 +53,22 @@ const io = new Server(server, {
 
 io.on('connection', (client) => {
   // eslint-disable-next-line no-console
-  console.log(`User ${client.id} connected`); // TODO remove console.log
+  console.log(`User ${client.id} connected`);
 
   client.on('disconnect', () => {
     const user = users.find((usr) => usr.id === client.id);
 
-    client.leave(user.currentRoom?.name);
+    if (user?.currentRoom?.name) {
+      io.to(user.currentRoom.name).emit(
+        'message',
+        buildMsg(`${user.username} left`, { id: 0, username: ADMIN }),
+      );
+      client.leave(user.currentRoom.name);
+    }
+    users = users.filter((usr) => usr.id !== client.id);
 
     // eslint-disable-next-line no-console
-    console.log(`User ${client.id} disconnected`); // TODO remove console.log
+    console.log(`User ${client.id} disconnected`);
   });
 
   client.on('user', (data) => {
@@ -60,6 +78,8 @@ io.on('connection', (client) => {
     };
 
     users.push(user);
+
+    io.emit('users', users);
     client.emit('user', user);
   });
 
@@ -76,6 +96,14 @@ io.on('connection', (client) => {
     io.emit('users', users);
   });
 
+  client.on('leaveRoom', (data) => {
+    const user = updateUser(data.id, null);
+
+    client.leave(data.currentRoom.name);
+    client.emit('user', user);
+    io.emit('users', users);
+  });
+
   client.on('room', async (data) => {
     const room = {
       id: generateId(rooms),
@@ -86,14 +114,18 @@ io.on('connection', (client) => {
     io.emit('rooms', rooms);
   });
 
-  client.on('message', (data) => {
+  client.on('sendMessage', (data) => {
     const message = buildMsg(data.text, data.user);
 
     messages.push(message);
     messages.sort((a, b) => a.time - b.time);
 
-    io.to(message.user.currentRoom.name).emit('message', message);
-    console.log(messages);
+    try {
+      io.to(message.user.currentRoom.name).emit('message', message);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e); // TODO: handle error
+    }
   });
 });
 
@@ -118,6 +150,7 @@ function updateUser(id, room) {
 
     return user;
   } catch (e) {
+    // eslint-disable-next-line no-console
     console.error(e); // TODO: handle error
   }
 }
