@@ -5,44 +5,28 @@ require('dotenv/config');
 const express = require('express');
 const { Server } = require('socket.io');
 const cors = require('cors');
-
-const PORT = process.env.PORT;
-const ADMIN = 'Admin';
-
-const messages = [];
-let users = [];
-let rooms = [];
-
+const MessageService = require('./services/Message.service.js');
+const UserService = require('./services/User.service.js');
+const RoomService = require('./services/Room.service.js');
+const UserController = require('./controllers/User.controller.js');
+const RoomController = require('./controllers/Room.controller.js');
+const MessageController = require('./controllers/Message.controller.js');
+const vars = require('./vars.js');
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-app.get('/users', (req, res) => {
-  res.status(200).send(users);
-});
+app.get('/users', UserController.getAll);
+app.get('/rooms', RoomController.getAll);
+app.get('/messages/:id', MessageController.getAllByRoomId);
 
-app.get('/rooms', (req, res) => {
-  res.status(200).send(rooms);
-});
-
-app.get('/messages/:id', (req, res) => {
-  const roomId = req.params.id;
-
-  try {
-    const filteredMessages = messages.filter(
-      (msg) => msg.user.currentRoom.id === +roomId,
-    );
-
-    res.status(200).send(filteredMessages);
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.log(e);
-  }
-});
-
-const server = app.listen(PORT);
+const server = app.listen(vars.PORT);
 const io = new Server(server, {
+  connectionStateRecovery: {
+    // the backup duration of the sessions and the packets
+    maxDisconnectionDuration: 2 * 60 * 1000,
+  },
   cors: {
     origin:
       process.env.NODE_ENV === 'production'
@@ -51,114 +35,94 @@ const io = new Server(server, {
   },
 });
 
-io.on('connection', (client) => {
-  // eslint-disable-next-line no-console
-  console.log(`User ${client.id} connected`);
+io.on('connection', (socket) => {
+  if (socket.recovered) {
+    // eslint-disable-next-line no-console
+    console.log(`User ${socket.id} reconnected`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`User ${socket.id} connected`);
+  }
 
-  client.on('disconnect', () => {
-    const user = users.find((usr) => usr.id === client.id);
+  socket.on('disconnect', () => {
+    const user = UserService.findUserById(socket.id);
 
-    if (user?.currentRoom?.name) {
-      io.to(user.currentRoom.name).emit(
-        'message',
-        buildMsg(`${user.username} left`, { id: 0, username: ADMIN }),
-      );
-      client.leave(user.currentRoom.name);
+    if (user && user.currentRoom) {
+      const exitMsg = MessageService.buildMsg(`${user.username} left room`, {
+        id: 0,
+        username: 'Admin',
+        currentRoom: user.currentRoom,
+      });
+
+      socket.leave(user.currentRoom.name);
+      socket.broadcast.to(user.currentRoom.name).emit('message', exitMsg);
     }
-    users = users.filter((usr) => usr.id !== client.id);
+
+    UserService.removeOne(socket.id);
+    io.emit('users', UserService.users);
 
     // eslint-disable-next-line no-console
-    console.log(`User ${client.id} disconnected`);
+    console.log(`User ${socket.id} disconnected`);
   });
 
-  client.on('user', (data) => {
-    const user = {
-      id: client.id,
-      username: data,
-    };
+  socket.on('createUser', (data) => {
+    const user = UserService.buildUser(data);
 
-    users.push(user);
-
-    io.emit('users', users);
-    client.emit('user', user);
+    UserService.addOne(user);
+    io.emit('users', UserService.users);
+    socket.emit('user', user);
   });
 
-  client.on('deleteUser', (data) => {
-    users = users.filter((usr) => usr.id !== data);
-    io.emit('users', users);
+  socket.on('deleteUser', (data) => {
+    UserService.removeOne(data);
+    io.emit('users', UserService.users);
   });
 
-  client.on('joinRoom', async (data) => {
-    const user = updateUser(data.user.id, data.room);
+  socket.on('joinRoom', (data) => {
+    const user = UserService.updateUserRoom(data.user.id, data.room);
 
-    client.join(data.room.name);
-    client.emit('user', user);
-    io.emit('users', users);
+    socket.emit('user', user);
+    io.emit('users', UserService.users);
+
+    const joinMsg = MessageService.buildMsg(`${user.username} joined room`, {
+      id: 0,
+      username: 'Admin',
+      currentRoom: data.room,
+    });
+
+    socket.join(user.currentRoom.name);
+    MessageService.addOne(joinMsg);
+    socket.broadcast.to(user.currentRoom.name).emit('message', joinMsg);
   });
 
-  client.on('leaveRoom', (data) => {
-    const user = updateUser(data.id, null);
+  socket.on('leaveRoom', (data) => {
+    const exitMsg = MessageService.buildMsg(`${data.username} left room`, {
+      id: 0,
+      username: 'Admin',
+      currentRoom: data.room,
+    });
 
-    client.leave(data.currentRoom.name);
-    client.emit('user', user);
-    io.emit('users', users);
+    socket.leave(data.currentRoom.name);
+    MessageService.addOne(exitMsg);
+    socket.broadcast.to(data.currentRoom.name).emit('message', exitMsg);
+
+    const user = UserService.updateUserRoom(data.id, null);
+
+    socket.emit('user', user);
+    io.emit('users', UserService.users);
   });
 
-  client.on('room', async (data) => {
-    const room = {
-      id: generateId(rooms),
-      name: data,
-    };
+  socket.on('room', async (data) => {
+    const room = RoomService.buildRoom(data);
 
-    rooms = [...rooms, room];
-    io.emit('rooms', rooms);
+    RoomService.addOne(room);
+    io.emit('rooms', RoomService.rooms);
   });
 
-  client.on('sendMessage', (data) => {
-    const message = buildMsg(data.text, data.user);
+  socket.on('sendMessage', (data) => {
+    const message = MessageService.buildMsg(data.text, data.user);
 
-    messages.push(message);
-    messages.sort((a, b) => a.time - b.time);
-
-    try {
-      io.to(message.user.currentRoom.name).emit('message', message);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error(e); // TODO: handle error
-    }
+    MessageService.addOne(message);
+    io.to(message.user.currentRoom.name).emit('message', message);
   });
 });
-
-function buildMsg(text, user) {
-  return {
-    text,
-    user,
-
-    time: new Intl.DateTimeFormat('pt-BR', {
-      hour: 'numeric',
-      minute: 'numeric',
-      second: 'numeric',
-    }).format(new Date()),
-  };
-}
-
-function updateUser(id, room) {
-  try {
-    const user = users.find((usr) => usr.id === id);
-
-    user.currentRoom = room;
-
-    return user;
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error(e); // TODO: handle error
-  }
-}
-
-function generateId(array) {
-  if (array.length) {
-    return array[array.length - 1].id + 1;
-  }
-
-  return 1;
-}
