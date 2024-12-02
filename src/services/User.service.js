@@ -1,20 +1,22 @@
 const { generateId } = require('../utils.js');
 let users = [];
 
-const findUserById = (id) => {
-  return users.find((usr) => usr.id === id);
+const getOneById = (id) => {
+  return users.find((usr) => usr.id === +id);
 };
 
-const updateUserRoom = (id, room) => {
-  const user = findUserById(id);
+const updateCurrentRoom = (userId, roomId) => {
+  const user = getOneById(userId);
 
-  user.currentRoom = room;
+  if (user) {
+    user.currentRoomId = +roomId;
 
-  return user;
+    return user;
+  }
 };
 
 const removeOne = (id) => {
-  users = users.filter((usr) => usr.id !== id);
+  users = users.filter((usr) => usr.id !== +id);
 };
 
 const addOne = (user) => {
@@ -22,14 +24,27 @@ const addOne = (user) => {
 };
 
 const buildUser = (username) => {
-  return { id: generateId(users), username };
+  return {
+    id: generateId(users),
+    username,
+    currentRoomId: null,
+  };
+};
+
+const getAll = () => {
+  return users;
+};
+
+const getAllByRoomId = (roomId) => {
+  return users.filter((usr) => usr.currentRoomId === +roomId) || [];
 };
 
 module.exports = {
-  updateUserRoom,
-  findUserById,
+  updateCurrentRoom,
+  getOneById,
   removeOne,
   addOne,
   buildUser,
-  users,
+  getAll,
+  getAllByRoomId,
 };

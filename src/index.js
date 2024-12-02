@@ -8,7 +8,9 @@ const cors = require('cors');
 const UserController = require('./controllers/User.controller.js');
 const RoomController = require('./controllers/Room.controller.js');
 const MessageController = require('./controllers/Message.controller.js');
-const registerHandlers = require('/handlers/handlers.js');
+const registerUserHandlers = require('./handlers/User.handler.js');
+const registerMessageHandlers = require('./handlers/Message.handler.js');
+const registerRoomHandlers = require('./handlers/Room.handler.js');
 const vars = require('./vars.js');
 const app = express();
 
@@ -18,6 +20,12 @@ app.use(express.json());
 app.get('/users', UserController.getAll);
 app.get('/rooms', RoomController.getAll);
 app.get('/messages/:id', MessageController.getAllByRoomId);
+
+app.use((error, req, res, next) => {
+  // eslint-disable-next-line no-console
+  console.error(error);
+  res.sendStatus(500);
+});
 
 const server = app.listen(vars.PORT);
 const io = new Server(server, {
@@ -41,7 +49,10 @@ const onConnection = (socket) => {
     // eslint-disable-next-line no-console
     console.log(`User ${socket.id} connected`);
   }
-  registerHandlers(io, socket);
+
+  registerUserHandlers(io, socket);
+  registerMessageHandlers(io, socket);
+  registerRoomHandlers(io, socket);
 };
 
 io.on('connection', onConnection);

@@ -1,9 +1,10 @@
 const MessageService = require('../services/Message.service.js');
-const getAllByRoomId = (req, res) => {
+const { tryCatch } = require('../utils.js');
+const getAllByRoomId = tryCatch(async (req, res) => {
   const roomId = req.params.id;
-  const filteredMessages = MessageService.filterMessagesByRoomId(roomId);
+  const filteredMessages = await MessageService.getAllByRoomId(roomId);
 
   res.status(200).send(filteredMessages);
-};
+});
 
 module.exports = { getAllByRoomId };

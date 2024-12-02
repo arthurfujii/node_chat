@@ -1,4 +1,5 @@
 const messages = [];
+// const UserService = require('../services/User.service.js');
 
 const buildMsg = (text, user) => {
   const time = new Intl.DateTimeFormat('pt-BR', {
@@ -15,13 +16,21 @@ const addOne = (msg) => {
   messages.sort((a, b) => a.time - b.time);
 };
 
-const filterMessagesByRoomId = (roomId) => {
-  return messages.filter((msg) => msg.user.currentRoom.id === +roomId);
+const getAll = () => {
+  return messages;
+};
+
+const getAllByRoomId = (roomId) => {
+  const filteredMessages = messages.filter(
+    (msg) => msg.user.currentRoomId === +roomId,
+  );
+
+  return filteredMessages;
 };
 
 module.exports = {
-  messages,
+  getAll,
   buildMsg,
   addOne,
-  filterMessagesByRoomId,
+  getAllByRoomId,
 };
